@@ -1,4 +1,5 @@
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,7 +18,11 @@ def snapshot(release, source):
         "config": "/etc/php.ini",
         "fragments": ["/etc/conf.d/test.ini"],
         "extensions": ["test"],
-        "directives": {"test.directive": entry("<value>" if source == "ubuntu" else "")},
+        "directives": {
+            "test.directive": entry("<value>" if source == "ubuntu" else ""),
+            "memory_limit": entry("128M"),
+            "test.escaped": entry("</script>%%CARDS%%"),
+        },
     }
     if source == "sury":
         run["directives"][f"test.php{release['php']}"] = entry("1")
@@ -57,6 +62,14 @@ class ReportTest(unittest.TestCase):
             version_card = markup.split('id="noble-fpm-8.1-8.5"', 1)[1].split("</section>", 1)[0]
             self.assertIn("<code>test.php8.1</code><small>Removed</small>", version_card)
             self.assertIn("<code>test.php8.5</code><small>Added</small>", version_card)
+            self.assertNotIn("memory_limit", version_card)
+            self.assertIn('data-left="noble-sury-8.1"', version_card)
+            self.assertIn('data-right="noble-sury-8.5"', version_card)
+            data_text = re.search(r'id="directive-data">(.*?)</script>', markup).group(1)
+            data = json.loads(data_text)
+            for name in ("noble-sury-8.1", "noble-sury-8.5"):
+                self.assertEqual(data[name]["fpm"]["memory_limit"], entry("128M"))
+                self.assertEqual(data[name]["fpm"]["test.escaped"], entry("</script>%%CARDS%%"))
             self.assertIn('href="data/noble-sury-8.1.json"', markup)
             self.assertTrue((site / "data" / "noble-sury.json").is_file())
             self.assertIn("&lt;value&gt;", markup)

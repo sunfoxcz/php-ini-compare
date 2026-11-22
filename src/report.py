@@ -3,6 +3,7 @@
 import argparse
 import html
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from itertools import combinations
@@ -131,7 +132,7 @@ def render_comparison(release, left_sample, right_sample, sapi, versions=None):
 
     rows = list(differences(left["directives"], right["directives"], only))
     table = "".join(
-        f'<tr data-difference><th scope="row"><code>{escape(name)}</code>'
+        f'<tr data-directive="{escape(name)}"><th scope="row"><code>{escape(name)}</code>'
         f'<small>{status}</small></th>{directive_cells(a)}{directive_cells(b)}</tr>'
         for name, status, a, b in rows
     )
@@ -147,13 +148,15 @@ def render_comparison(release, left_sample, right_sample, sapi, versions=None):
         f'{sum(status == only[1] for _, status, _, _ in rows)} {only[1].lower()}'
     )
     table_markup = (
-        '<div class="table-scroll" tabindex="0" aria-label="Directive differences">'
+        '<div class="table-scroll" tabindex="0" aria-label="Directive values"'
+        f'{"" if rows else " hidden"}>'
         '<table><thead><tr><th rowspan="2" scope="col">Directive</th>'
         f'<th colspan="2" scope="colgroup">{headings[0]}</th>'
         f'<th colspan="2" scope="colgroup">{headings[1]}</th></tr>'
         '<tr><th scope="col">Global</th><th scope="col">Local</th>'
         f'<th scope="col">Global</th><th scope="col">Local</th></tr></thead>'
-        f'<tbody>{table}</tbody></table></div>' if rows else "<p>No INI directive differences.</p>"
+        f'<tbody>{table}</tbody></table></div>'
+        f'<p data-no-differences{" hidden" if rows else ""}>No INI directive differences.</p>'
     )
     blocks = []
     for heading, sample in zip(headings, (left_sample, right_sample)):
@@ -165,7 +168,8 @@ def render_comparison(release, left_sample, right_sample, sapi, versions=None):
             f'<a href="{href}" download>JSON</a>{details}</div>'
         )
     return f"""
-<section class="comparison" id="{card_id}" data-release="{release_id}" data-sapi="{sapi}" {classes}>
+<section class="comparison" id="{card_id}" data-release="{release_id}" data-sapi="{sapi}"
+  data-left="{escape(left_sample['filename'])}" data-right="{escape(right_sample['filename'])}" {classes}>
   <h2>{title}</h2>
   <p class="summary">{summary} <span>{extensions}</span></p>
   <div class="sources">{''.join(blocks)}</div>
@@ -213,15 +217,21 @@ def render(input_dir, output_dir):
     for sample in samples.values():
         filename = f'{sample["filename"]}.json'
         copyfile(input_dir / filename, data_dir / filename)
+    # Embed each directive snapshot once so a downloaded report can search offline.
+    directive_index = {
+        sample["filename"]: {sapi: sample[sapi]["directives"] for sapi in SAPIS}
+        for sample in samples.values()
+    }
+    directive_json = json.dumps(directive_index, separators=(",", ":"), ensure_ascii=False)
     replacements = {
         "UPDATED": now,
+        "DIRECTIVES": directive_json.replace("<", "\\u003c"),
         "RELEASES": "".join(releases),
         "OLDER_OPTIONS": version_options(versions, 0, len(versions) - 1, len(versions) - 2),
         "NEWER_OPTIONS": version_options(versions, 1, len(versions), len(versions) - 1),
         "CARDS": "".join(cards),
     }
-    for marker, content in replacements.items():
-        page = page.replace(f"%%{marker}%%", content)
+    page = re.sub(r"%%([A-Z_]+)%%", lambda match: replacements[match[1]], page)
     (output_dir / "index.html").write_text(page, encoding="utf-8")
 
 

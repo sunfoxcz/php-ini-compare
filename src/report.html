@@ -15,6 +15,7 @@ a { color: var(--accent); }
 .updated, small, .muted, .summary span { color: var(--muted); }
 .toolbar { display: flex; flex-wrap: wrap; gap: 1rem; margin: 2rem 0; }
 label { display: grid; gap: .25rem; font-weight: 600; }
+label.checkbox { display: flex; gap: .35rem; align-self: end; align-items: center; padding-bottom: .5rem; }
 input, select { font: inherit; border: 1px solid var(--line); padding: .45rem .6rem; border-radius: .35rem; }
 .comparison { margin-top: 2rem; border: 1px solid var(--line); border-radius: .6rem; padding: clamp(.75rem, 3vw, 1.4rem); }
 .sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .65rem; margin: 1rem 0; }
@@ -50,9 +51,11 @@ small { display: block; font-size: .76rem; }
   <label>Release <select id="release"><option value="">All LTS releases</option>%%RELEASES%%</select></label>
   <label>Runtime <select id="sapi"><option value="">CLI and PHP-FPM</option><option value="cli">CLI</option><option value="fpm">PHP-FPM</option></select></label>
   <label>Directive <input type="search" id="query" placeholder="e.g. memory_limit"></label>
+  <label class="checkbox"><input type="checkbox" id="show-unchanged"> Show unchanged</label>
 </div>
-<p id="empty" role="status" hidden>No matching directive differences.</p>
+<p id="empty" role="status" hidden>No matching directives.</p>
 <main>%%CARDS%%</main>
+<script type="application/json" id="directive-data">%%DIRECTIVES%%</script>
 <script>
 const mode = document.querySelector('#mode');
 const older = document.querySelector('#older');
@@ -60,8 +63,59 @@ const newer = document.querySelector('#newer');
 const release = document.querySelector('#release');
 const sapi = document.querySelector('#sapi');
 const query = document.querySelector('#query');
+const showUnchanged = document.querySelector('#show-unchanged');
 const empty = document.querySelector('#empty');
 const cards = document.querySelectorAll('.comparison');
+let directiveData;
+
+function showMatchingUnchanged(card, term) {
+  directiveData ??= JSON.parse(document.querySelector('#directive-data').textContent);
+  const {left, right, sapi} = card.dataset;
+  const leftValues = directiveData[left][sapi];
+  const rightValues = directiveData[right][sapi];
+  const body = card.querySelector('tbody');
+  const changedRows = Array.from(body.querySelectorAll('tr'));
+  const changedNames = new Set(changedRows.map(row => row.dataset.directive));
+  const rows = [];
+  let nextChanged = 0;
+
+  // The embedded snapshot and the original table both use directive-name order.
+  for (const [name, leftValue] of Object.entries(leftValues)) {
+    while (nextChanged < changedRows.length && changedRows[nextChanged].dataset.directive < name) {
+      rows.push(changedRows[nextChanged++]);
+    }
+    if (changedNames.has(name) || !Object.hasOwn(rightValues, name) || !name.toLowerCase().includes(term)) continue;
+
+    const row = document.createElement('tr');
+    row.dataset.directive = name;
+    row.dataset.unchanged = '';
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    const directive = document.createElement('code');
+    directive.textContent = name;
+    const status = document.createElement('small');
+    status.textContent = 'Unchanged';
+    heading.append(directive, status);
+    row.append(heading);
+    for (const entry of [leftValue, rightValues[name]]) {
+      for (const key of ['global', 'local']) {
+        const cell = row.insertCell();
+        const value = document.createElement('code');
+        value.textContent = JSON.stringify(entry[key]);
+        if (entry[key] === null) value.className = 'muted';
+        cell.append(value);
+        if (key === 'global') {
+          const access = document.createElement('small');
+          access.textContent = 'Access ' + entry.access;
+          cell.append(access);
+        }
+      }
+    }
+    rows.push(row);
+  }
+  rows.push(...changedRows.slice(nextChanged));
+  body.replaceChildren(...rows);
+}
 function filter() {
   const versionMode = mode.value === 'versions';
   for (const field of document.querySelectorAll('[data-version-filter]')) field.hidden = !versionMode;
@@ -81,18 +135,22 @@ function filter() {
       card.hidden = true;
       continue;
     }
+    for (const row of card.querySelectorAll('[data-unchanged]')) row.remove();
+    if (showUnchanged.checked || term) showMatchingUnchanged(card, term);
     let hits = 0;
-    for (const row of card.querySelectorAll('[data-difference]')) {
-      row.hidden = !row.querySelector('th code').textContent.toLowerCase().includes(term);
+    for (const row of card.querySelectorAll('[data-directive]')) {
+      row.hidden = !row.dataset.directive.toLowerCase().includes(term);
       if (!row.hidden) hits++;
     }
+    card.querySelector('.table-scroll').hidden = !hits;
+    card.querySelector('[data-no-differences]').hidden = Boolean(hits);
     card.hidden = Boolean(term && !hits);
     if (!card.hidden) visible++;
   }
   empty.hidden = visible > 0;
 }
 document.querySelector('.toolbar').hidden = false;
-for (const input of [mode, older, newer, release, sapi, query]) input.addEventListener('input', filter);
+for (const input of [mode, older, newer, release, sapi, query, showUnchanged]) input.addEventListener('input', filter);
 filter();
 </script>
 </body>
