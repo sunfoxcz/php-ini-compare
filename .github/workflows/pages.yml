@@ -1,0 +1,82 @@
+name: PHP INI report
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  schedule:
+    - cron: "24 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.samples }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s tests
+      - id: matrix
+        run: echo "samples=$(python3 src/report.py matrix)" >> "$GITHUB_OUTPUT"
+
+  collect:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      SUITE: ${{ matrix.sample.suite }}
+      SOURCE: ${{ matrix.sample.source }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 src/report.py collect --suite "$SUITE" --source "$SOURCE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sample-${{ matrix.sample.suite }}-${{ matrix.sample.source }}
+          path: measurements/*.json
+          if-no-files-found: error
+
+  report:
+    needs: collect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sample-*
+          path: measurements
+          merge-multiple: true
+      - run: python3 src/report.py render
+      - uses: actions/upload-artifact@v4
+        with:
+          name: php-ini-report
+          path: site
+          if-no-files-found: error
+      - if: github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    if: github.ref == 'refs/heads/master'
+    needs: report
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: php-ini-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

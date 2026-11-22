@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>PHP INI differences on Ubuntu LTS</title>
+<style>
+:root { font-family: system-ui, sans-serif; color-scheme: light dark; --surface: #f5f7fa; --line: #c7d0df; --accent: #234ec6; --muted: #4f5c70; }
+@media (prefers-color-scheme: dark) { :root { --surface: #202635; --line: #414b60; --accent: #a9bcff; --muted: #bec8dc; } }
+body { max-width: 72rem; margin: 0 auto; padding: 2rem clamp(1rem, 5vw, 4rem) 4rem; line-height: 1.5; }
+h1 { font-size: clamp(2rem, 5vw, 3.25rem); line-height: 1.12; margin: .6rem 0; letter-spacing: -.045em; }
+h2 { font-size: 1.45rem; margin: 0 0 .45rem; }
+a { color: var(--accent); }
+.updated, small, .muted, .summary span { color: var(--muted); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 1rem; margin: 2rem 0; }
+label { display: grid; gap: .25rem; font-weight: 600; }
+input, select { font: inherit; border: 1px solid var(--line); padding: .45rem .6rem; border-radius: .35rem; }
+.comparison { margin-top: 2rem; border: 1px solid var(--line); border-radius: .6rem; padding: clamp(.75rem, 3vw, 1.4rem); }
+.sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .65rem; margin: 1rem 0; }
+.sources > div { padding: .6rem .8rem; background: var(--surface); border-radius: .3rem; overflow-wrap: anywhere; min-width: 0; }
+.sources a { margin-left: .5rem; }
+summary { cursor: pointer; }
+pre { overflow: auto; max-height: 18rem; font-size: .8rem; }
+.summary { margin: 0; }
+.summary span { margin-left: .45rem; }
+.table-scroll { overflow-x: auto; }
+table { width: 100%; min-width: 43rem; border-collapse: collapse; text-align: left; }
+th, td { padding: .5rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead { background: var(--surface); }
+tbody th { width: 30%; }
+td code { overflow-wrap: anywhere; }
+small { display: block; font-size: .76rem; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="updated">Updated %%UPDATED%%</div>
+  <h1>PHP INI differences on Ubuntu LTS</h1>
+  <p>Ubuntu packages compared with Ondřej Surý’s packages of the same PHP major and minor version. Each PHP-FPM snapshot comes from a real FastCGI request to the package’s default pool.</p>
+  <details><summary>How to read the report</summary>
+    <p>Each pair uses an isolated, fresh amd64 install with the same requested PHP extensions. The PHP patch and packaging revisions may differ. Global and local values are the effective values reported by PHP. Quoted strings are shown verbatim; an empty string, <code>null</code> and an unregistered directive have separate meanings. Access is PHP’s INI access bitmask. FPM pool directives such as <code>pm.max_children</code> fall outside PHP INI settings.</p>
+  </details>
+</header>
+<div class="toolbar" hidden>
+  <label>Release <select id="release"><option value="">All LTS releases</option>%%RELEASES%%</select></label>
+  <label>Runtime <select id="sapi"><option value="">CLI and PHP-FPM</option><option value="cli">CLI</option><option value="fpm">PHP-FPM</option></select></label>
+  <label>Directive <input type="search" id="query" placeholder="e.g. memory_limit"></label>
+</div>
+<p id="empty" role="status" hidden>No matching directive differences.</p>
+<main>%%CARDS%%</main>
+<script>
+const release = document.querySelector('#release');
+const sapi = document.querySelector('#sapi');
+const query = document.querySelector('#query');
+const empty = document.querySelector('#empty');
+const cards = document.querySelectorAll('.comparison');
+function filter() {
+  const term = query.value.trim().toLowerCase();
+  let visible = 0;
+  for (const card of cards) {
+    const releaseMatch = !release.value || card.dataset.release === release.value;
+    const sapiMatch = !sapi.value || card.dataset.sapi === sapi.value;
+    let hits = 0;
+    for (const row of card.querySelectorAll('[data-difference]')) {
+      row.hidden = !row.querySelector('th code').textContent.toLowerCase().includes(term);
+      if (!row.hidden) hits++;
+    }
+    card.hidden = !(releaseMatch && sapiMatch && (!term || hits));
+    if (!card.hidden) visible++;
+  }
+  empty.hidden = visible > 0;
+}
+document.querySelector('.toolbar').hidden = false;
+for (const input of [release, sapi, query]) input.addEventListener('input', filter);
+</script>
+</body>
+</html>
