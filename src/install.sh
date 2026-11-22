@@ -64,6 +64,7 @@ fi
 apt-get install -y --no-install-recommends \
     -o "Dpkg::Options::=--path-include=/usr/share/man/man1/php$PHP_VERSION.1.gz" \
     -o "Dpkg::Options::=--path-include=/usr/share/man/man1/phar*$PHP_VERSION.1.gz" \
+    -o "Dpkg::Options::=--path-include=/usr/share/man/man1/phar$PHP_VERSION.phar.1.gz" \
     libfcgi-bin $packages
 mkdir -p /probe
 apt-cache policy "php$PHP_VERSION-cli" "php$PHP_VERSION-fpm" > /probe/apt-policy.txt
