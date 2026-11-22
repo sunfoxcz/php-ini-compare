@@ -25,6 +25,13 @@ The report highlights directives and extensions that were added or removed,
 as well as changes to effective values or access. Search also looks up
 unchanged directives. Select **Show unchanged** to list them all.
 
+The **Custom upgrade** view compares any two measured snapshots with
+separate CLI and PHP-FPM results. It identifies differences in Ubuntu release and package
+source alongside PHP changes. The historical native profiles use PHP 7.2
+from Ubuntu 18.04 and PHP 7.4 from Ubuntu 20.04. These use the public Ubuntu
+package archives without Ubuntu Pro. The historical Surý profiles on
+Ubuntu 22.04 offer PHP 7.2, 7.3, 7.4 and 8.0.
+
 ## Build the report
 
 Run `make` with Docker and Python 3.10 or newer. Open `site/index.html`.
@@ -36,6 +43,6 @@ one package source, run `python3 src/report.py collect --suite noble --source su
 Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**.
 The **PHP INI report** workflow builds a downloadable HTML preview for
 pull requests and publishes from `master` after a push, on Mondays, or
-when run manually on `master`. Publication requires all 18 package builds
+when run manually on `master`. Publication requires all 24 package builds
 and measurements to pass. The site's project URL is
 https://sunfoxcz.github.io/php-ini-compare/.

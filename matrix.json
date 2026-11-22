@@ -22,5 +22,49 @@
     "8.3",
     "8.4",
     "8.5"
+  ],
+  "historical_samples": [
+    {
+      "ubuntu": "18.04",
+      "suite": "bionic",
+      "php": "7.2",
+      "source": "ubuntu",
+      "filename": "bionic-ubuntu"
+    },
+    {
+      "ubuntu": "20.04",
+      "suite": "focal",
+      "php": "7.4",
+      "source": "ubuntu",
+      "filename": "focal-ubuntu"
+    },
+    {
+      "ubuntu": "22.04",
+      "suite": "jammy",
+      "php": "7.2",
+      "source": "sury",
+      "filename": "jammy-sury-7.2"
+    },
+    {
+      "ubuntu": "22.04",
+      "suite": "jammy",
+      "php": "7.3",
+      "source": "sury",
+      "filename": "jammy-sury-7.3"
+    },
+    {
+      "ubuntu": "22.04",
+      "suite": "jammy",
+      "php": "7.4",
+      "source": "sury",
+      "filename": "jammy-sury-7.4"
+    },
+    {
+      "ubuntu": "22.04",
+      "suite": "jammy",
+      "php": "8.0",
+      "source": "sury",
+      "filename": "jammy-sury-8.0"
+    }
   ]
 }

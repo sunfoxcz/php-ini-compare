@@ -32,15 +32,22 @@ SCRIPT_FILENAME=/probe/snapshot.php SCRIPT_NAME=/snapshot.php REQUEST_METHOD=GET
     cgi-fcgi -bind -connect "$socket" > "$work/response"
 # Strip FastCGI headers, then validate the JSON and real FPM SAPI.
 awk 'body {print; next} /^\r?$/ {body=1}' "$work/response" > "$work/fpm.json"
-"$php" -n -r '
-    $cli = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
-    $fpm = json_decode(file_get_contents($argv[2]), true, 512, JSON_THROW_ON_ERROR);
+"$php" -r '
+    function read_snapshot($path) {
+        $snapshot = json_decode(file_get_contents($path), true);
+        if (!is_array($snapshot)) {
+            throw new RuntimeException("$path: " . json_last_error_msg());
+        }
+        return $snapshot;
+    }
+    $cli = read_snapshot($argv[1]);
+    $fpm = read_snapshot($argv[2]);
     if ($cli["sapi"] !== "cli" || $fpm["sapi"] !== "fpm-fcgi" ||
         $cli["php"] !== $fpm["php"] || !$cli["config"] || !$fpm["config"] ||
         !$cli["directives"] || !$fpm["directives"]) {
         throw new RuntimeException("Incomplete CLI or FPM measurement");
     }
-    echo json_encode([
+    $result = json_encode([
         "ubuntu" => $argv[3],
         "suite" => $argv[4],
         "source" => $argv[5],
@@ -48,5 +55,9 @@ awk 'body {print; next} /^\r?$/ {body=1}' "$work/response" > "$work/fpm.json"
         "packages" => file_get_contents("/probe/packages.tsv"),
         "cli" => $cli,
         "fpm" => $fpm,
-    ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), PHP_EOL;
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    if ($result === false) {
+        throw new RuntimeException(json_last_error_msg());
+    }
+    echo $result, PHP_EOL;
 ' "$work/cli.json" "$work/fpm.json" "$VERSION_ID" "$VERSION_CODENAME" "$PHP_PACKAGE_SOURCE"
