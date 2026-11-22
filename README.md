@@ -22,7 +22,8 @@ the report's INI scope.
 The **PHP versions (Surý)** view compares any two from PHP 8.1–8.5.
 Each pair uses the same Ubuntu release and runs separately for CLI and PHP-FPM.
 The report highlights directives and extensions that were added or removed,
-as well as changes to effective values or access.
+as well as changes to effective values or access. Search also looks up
+unchanged directives. Select **Show unchanged** to list them all.
 
 ## Build the report
 
