@@ -1,0 +1,5 @@
+[
+  {"ubuntu": "22.04", "suite": "jammy", "php": "8.1"},
+  {"ubuntu": "24.04", "suite": "noble", "php": "8.3"},
+  {"ubuntu": "26.04", "suite": "resolute", "php": "8.5"}
+]
