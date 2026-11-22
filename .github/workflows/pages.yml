@@ -34,12 +34,13 @@ jobs:
     env:
       SUITE: ${{ matrix.sample.suite }}
       SOURCE: ${{ matrix.sample.source }}
+      PHP_VERSION: ${{ matrix.sample.php }}
     steps:
       - uses: actions/checkout@v7.0.1
-      - run: python3 src/report.py collect --suite "$SUITE" --source "$SOURCE"
+      - run: python3 src/report.py collect --suite "$SUITE" --source "$SOURCE" --php "$PHP_VERSION"
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: sample-${{ matrix.sample.suite }}-${{ matrix.sample.source }}
+          name: sample-${{ matrix.sample.filename }}
           path: measurements/*.json
           if-no-files-found: error
 

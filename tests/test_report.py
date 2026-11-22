@@ -19,6 +19,8 @@ def snapshot(release, source):
         "extensions": ["test"],
         "directives": {"test.directive": entry("<value>" if source == "ubuntu" else "")},
     }
+    if source == "sury":
+        run["directives"][f"test.php{release['php']}"] = entry("1")
     return {
         **release,
         "source": source,
@@ -38,23 +40,28 @@ class ReportTest(unittest.TestCase):
             [("changed", "Changed"), ("left", "Ubuntu only"), ("right", "Surý only")],
         )
 
-    def test_renderer_validates_all_six_snapshots_and_escapes_values(self):
+    def test_renderer_validates_all_snapshots_and_escapes_values(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             samples = root / "samples"
             samples.mkdir()
-            for release in report.matrix():
-                for source in report.SOURCES:
-                    filename = f"{release['suite']}-{source}.json"
-                    (samples / filename).write_text(json.dumps(snapshot(release, source)))
+            for sample in report.sample_specs(report.matrix()):
+                filename = f"{sample['filename']}.json"
+                (samples / filename).write_text(json.dumps(snapshot(sample, sample["source"])))
             site = root / "site"
             report.render(samples, site)
             markup = (site / "index.html").read_text()
-            self.assertEqual(markup.count('class="comparison"'), 6)
-            self.assertEqual(len(list((site / "data").glob("*.json"))), 6)
+            self.assertEqual(markup.count('data-mode="packages"'), 6)
+            self.assertEqual(markup.count('data-mode="versions"'), 60)
+            self.assertEqual(len(list((site / "data").glob("*.json"))), 18)
+            version_card = markup.split('id="noble-fpm-8.1-8.5"', 1)[1].split("</section>", 1)[0]
+            self.assertIn("<code>test.php8.1</code><small>Removed</small>", version_card)
+            self.assertIn("<code>test.php8.5</code><small>Added</small>", version_card)
+            self.assertIn('href="data/noble-sury-8.1.json"', markup)
+            self.assertTrue((site / "data" / "noble-sury.json").is_file())
             self.assertIn("&lt;value&gt;", markup)
             self.assertNotIn("<value>", markup)
-            (samples / "noble-sury.json").unlink()
+            (samples / "noble-sury-8.1.json").unlink()
             with self.assertRaises(FileNotFoundError):
                 report.render(samples, site)
             self.assertEqual((site / "index.html").read_text(), markup)

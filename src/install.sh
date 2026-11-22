@@ -34,7 +34,7 @@ esac
 set -- cli fpm common curl mbstring mysql xml zip
 # From PHP 8.5 OPcache is built into the interpreter.
 case "$PHP_VERSION" in
-    8.1|8.3) set -- "$@" opcache ;;
+    8.[1-4]) set -- "$@" opcache ;;
 esac
 packages=
 for module; do
