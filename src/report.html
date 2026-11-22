@@ -38,12 +38,15 @@ small { display: block; font-size: .76rem; }
 <header>
   <div class="updated">Updated %%UPDATED%%</div>
   <h1>PHP INI differences on Ubuntu LTS</h1>
-  <p>Ubuntu packages compared with Ondřej Surý’s packages of the same PHP major and minor version. Each PHP-FPM snapshot comes from a real FastCGI request to the package’s default pool.</p>
+  <p>Compare Ubuntu packages with Ondřej Surý’s packages on the same PHP version, or compare PHP versions from Surý on the same Ubuntu release. Each PHP-FPM snapshot comes from a real FastCGI request to the package’s default pool.</p>
   <details><summary>How to read the report</summary>
     <p>Each pair uses an isolated, fresh amd64 install with the same requested PHP extensions. The PHP patch and packaging revisions may differ. Global and local values are the effective values reported by PHP. Quoted strings are shown verbatim; an empty string, <code>null</code> and an unregistered directive have separate meanings. Access is PHP’s INI access bitmask. FPM pool directives such as <code>pm.max_children</code> fall outside PHP INI settings.</p>
   </details>
 </header>
 <div class="toolbar" hidden>
+  <label>Compare <select id="mode"><option value="packages">Ubuntu vs. Surý</option><option value="versions">PHP versions (Surý)</option></select></label>
+  <label data-version-filter hidden>Older PHP <select id="older">%%OLDER_OPTIONS%%</select></label>
+  <label data-version-filter hidden>Newer PHP <select id="newer">%%NEWER_OPTIONS%%</select></label>
   <label>Release <select id="release"><option value="">All LTS releases</option>%%RELEASES%%</select></label>
   <label>Runtime <select id="sapi"><option value="">CLI and PHP-FPM</option><option value="cli">CLI</option><option value="fpm">PHP-FPM</option></select></label>
   <label>Directive <input type="search" id="query" placeholder="e.g. memory_limit"></label>
@@ -51,29 +54,46 @@ small { display: block; font-size: .76rem; }
 <p id="empty" role="status" hidden>No matching directive differences.</p>
 <main>%%CARDS%%</main>
 <script>
+const mode = document.querySelector('#mode');
+const older = document.querySelector('#older');
+const newer = document.querySelector('#newer');
 const release = document.querySelector('#release');
 const sapi = document.querySelector('#sapi');
 const query = document.querySelector('#query');
 const empty = document.querySelector('#empty');
 const cards = document.querySelectorAll('.comparison');
 function filter() {
+  const versionMode = mode.value === 'versions';
+  for (const field of document.querySelectorAll('[data-version-filter]')) field.hidden = !versionMode;
+  const olderOrder = Number(older.selectedOptions[0].dataset.order);
+  for (const option of newer.options) option.disabled = Number(option.dataset.order) <= olderOrder;
+  if (newer.selectedIndex === -1 || newer.selectedOptions[0].disabled) {
+    newer.value = Array.from(newer.options).find(option => !option.disabled).value;
+  }
   const term = query.value.trim().toLowerCase();
   let visible = 0;
   for (const card of cards) {
+    const modeMatch = card.dataset.mode === mode.value;
+    const versionMatch = !versionMode || (card.dataset.older === older.value && card.dataset.newer === newer.value);
     const releaseMatch = !release.value || card.dataset.release === release.value;
     const sapiMatch = !sapi.value || card.dataset.sapi === sapi.value;
+    if (!(modeMatch && versionMatch && releaseMatch && sapiMatch)) {
+      card.hidden = true;
+      continue;
+    }
     let hits = 0;
     for (const row of card.querySelectorAll('[data-difference]')) {
       row.hidden = !row.querySelector('th code').textContent.toLowerCase().includes(term);
       if (!row.hidden) hits++;
     }
-    card.hidden = !(releaseMatch && sapiMatch && (!term || hits));
+    card.hidden = Boolean(term && !hits);
     if (!card.hidden) visible++;
   }
   empty.hidden = visible > 0;
 }
 document.querySelector('.toolbar').hidden = false;
-for (const input of [release, sapi, query]) input.addEventListener('input', filter);
+for (const input of [mode, older, newer, release, sapi, query]) input.addEventListener('input', filter);
+filter();
 </script>
 </body>
 </html>

@@ -19,17 +19,22 @@ loaded extensions and effective global and local values. Native and Surý
 patch versions can differ. PHP-FPM pool directives themselves are outside
 the report's INI scope.
 
+The **PHP versions (Surý)** view compares any two from PHP 8.1–8.5.
+Each pair uses the same Ubuntu release and runs separately for CLI and PHP-FPM.
+The report highlights directives and extensions that were added or removed,
+as well as changes to effective values or access.
+
 ## Build the report
 
 Run `make` with Docker and Python 3.10 or newer. Open `site/index.html`.
 To rerender existing measurements, run `make report`. To collect just
-one package source, run `python3 src/report.py collect --suite noble --source sury`.
+one package source, run `python3 src/report.py collect --suite noble --source sury --php 8.4`.
 
 ## GitHub Pages
 
 Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**.
 The **PHP INI report** workflow builds a downloadable HTML preview for
 pull requests and publishes from `master` after a push, on Mondays, or
-when run manually on `master`. Publication requires all six package builds
+when run manually on `master`. Publication requires all 18 package builds
 and measurements to pass. The site's project URL is
 https://sunfoxcz.github.io/php-ini-compare/.

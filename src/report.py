@@ -5,6 +5,7 @@ import html
 import json
 import subprocess
 from datetime import datetime, timezone
+from itertools import combinations
 from pathlib import Path
 from shutil import copyfile
 
@@ -18,10 +19,21 @@ def matrix():
     return json.loads((ROOT / "matrix.json").read_text())
 
 
+def sample_specs(config):
+    for release in config["releases"]:
+        yield release | {"source": "ubuntu", "filename": f"{release['suite']}-ubuntu"}
+        for php in config["sury_versions"]:
+            # Preserve the existing download URLs for the native-versus-Surý pairs.
+            filename = f"{release['suite']}-sury"
+            if php != release["php"]:
+                filename += f"-{php}"
+            yield release | {"php": php, "source": "sury", "filename": filename}
+
+
 def load_snapshot(path, release, source):
     sample = json.loads(path.read_text())
     for key, value in {**release, "source": source}.items():
-        if key != "php" and sample.get(key) != value:
+        if key not in {"php", "filename"} and sample.get(key) != value:
             raise ValueError(f"{path}: expected {key}={value}")
     for key, sapi in (("cli", "cli"), ("fpm", "fpm-fcgi")):
         run = sample[key]
@@ -32,12 +44,13 @@ def load_snapshot(path, release, source):
     return sample
 
 
-def collect(release, source, output):
-    tag = f"php-ini-compare:{release['suite']}-{source}"
-    target = output / f"{release['suite']}-{source}.json"
+def collect(sample, output):
+    source = sample["source"]
+    tag = f"php-ini-compare:{sample['filename']}"
+    target = output / f"{sample['filename']}.json"
     output.mkdir(parents=True, exist_ok=True)
-    args = {"UBUNTU": release["ubuntu"], "SUITE": release["suite"],
-            "PHP_VERSION": release["php"], "SOURCE": source}
+    args = {"UBUNTU": sample["ubuntu"], "SUITE": sample["suite"],
+            "PHP_VERSION": sample["php"], "SOURCE": source}
     command = ["docker", "build", "--pull", "--no-cache", "--platform", "linux/amd64", "-t", tag]
     for key, value in args.items():
         command += ["--build-arg", f"{key}={value}"]
@@ -49,18 +62,18 @@ def collect(release, source, output):
                 ["docker", "run", "--rm", "--network", "none", "--platform", "linux/amd64", tag],
                 stdout=stream, check=True,
             )
-        load_snapshot(temporary, release, source)
+        load_snapshot(temporary, sample, source)
         temporary.replace(target)
     finally:
         temporary.unlink(missing_ok=True)
 
 
-def differences(ubuntu, sury):
+def differences(ubuntu, sury, only=("Ubuntu only", "Surý only")):
     for name in sorted(ubuntu.keys() | sury.keys()):
         if name not in ubuntu:
-            yield name, "Surý only", None, sury[name]
+            yield name, only[1], None, sury[name]
         elif name not in sury:
-            yield name, "Ubuntu only", ubuntu[name], None
+            yield name, only[0], ubuntu[name], None
         elif ubuntu[name] != sury[name]:
             yield name, "Changed", ubuntu[name], sury[name]
 
@@ -95,11 +108,28 @@ def provenance(sample, sapi):
     )
 
 
-def render_comparison(release, ubuntu, sury, sapi):
-    left, right = ubuntu[sapi], sury[sapi]
+def render_comparison(release, left_sample, right_sample, sapi, versions=None):
+    left, right = left_sample[sapi], right_sample[sapi]
     if left["architecture"] != right["architecture"]:
         raise ValueError("Cannot compare snapshots from different CPU architectures")
-    rows = list(differences(left["directives"], right["directives"]))
+
+    release_id = escape(release["suite"])
+    label = escape(SAPIS[sapi])
+    card_id = f"{release_id}-{sapi}"
+    classes = 'data-mode="packages"'
+    headings = ("Ubuntu", "Surý")
+    only = ("Ubuntu only", "Surý only")
+    php_label = f'PHP {escape(release["php"])}'
+    if versions:
+        older, newer = map(escape, versions)
+        card_id += f"-{older}-{newer}"
+        classes = f'data-mode="versions" data-older="{older}" data-newer="{newer}" hidden'
+        headings = (f"PHP {older}", f"PHP {newer}")
+        only = ("Removed", "Added")
+        php_label = f"Surý PHP {older} → {newer}"
+    title = f'Ubuntu {escape(release["ubuntu"])} · {php_label} · {label}'
+
+    rows = list(differences(left["directives"], right["directives"], only))
     table = "".join(
         f'<tr data-difference><th scope="row"><code>{escape(name)}</code>'
         f'<small>{status}</small></th>{directive_cells(a)}{directive_cells(b)}</tr>'
@@ -107,67 +137,92 @@ def render_comparison(release, ubuntu, sury, sapi):
     )
     ext = []
     left_ext, right_ext = set(left["extensions"]), set(right["extensions"])
-    for label, names in (("Ubuntu only", left_ext - right_ext), ("Surý only", right_ext - left_ext)):
+    for status, names in zip(only, (left_ext - right_ext, right_ext - left_ext)):
         if names:
-            ext.append(f'{label} <code>{escape(", ".join(sorted(names)))}</code>')
+            ext.append(f'{status} extensions <code>{escape(", ".join(sorted(names)))}</code>')
     extensions = " · ".join(ext) if ext else "Same loaded extensions"
-    release_id = escape(release["suite"])
-    label = escape(SAPIS[sapi])
-    title = f'Ubuntu {escape(release["ubuntu"])} · PHP {escape(release["php"])} · {label}'
     summary = (
         f'{sum(status == "Changed" for _, status, _, _ in rows)} changed · '
-        f'{sum(status != "Changed" for _, status, _, _ in rows)} registered on one side only'
+        f'{sum(status == only[0] for _, status, _, _ in rows)} {only[0].lower()} · '
+        f'{sum(status == only[1] for _, status, _, _ in rows)} {only[1].lower()}'
     )
     table_markup = (
         '<div class="table-scroll" tabindex="0" aria-label="Directive differences">'
         '<table><thead><tr><th rowspan="2" scope="col">Directive</th>'
-        '<th colspan="2" scope="colgroup">Ubuntu</th><th colspan="2" scope="colgroup">Surý</th></tr>'
+        f'<th colspan="2" scope="colgroup">{headings[0]}</th>'
+        f'<th colspan="2" scope="colgroup">{headings[1]}</th></tr>'
         '<tr><th scope="col">Global</th><th scope="col">Local</th>'
         f'<th scope="col">Global</th><th scope="col">Local</th></tr></thead>'
         f'<tbody>{table}</tbody></table></div>' if rows else "<p>No INI directive differences.</p>"
     )
-    return f'''
-<section class="comparison" id="{release_id}-{sapi}" data-release="{release_id}" data-sapi="{sapi}">
+    blocks = []
+    for heading, sample in zip(headings, (left_sample, right_sample)):
+        version = escape(sample[sapi]["php"])
+        href = f'data/{escape(sample["filename"])}.json'
+        details = "" if versions else provenance(sample, sapi)
+        blocks.append(
+            f'<div><strong>{heading}</strong> <code>{version}</code>'
+            f'<a href="{href}" download>JSON</a>{details}</div>'
+        )
+    return f"""
+<section class="comparison" id="{card_id}" data-release="{release_id}" data-sapi="{sapi}" {classes}>
   <h2>{title}</h2>
   <p class="summary">{summary} <span>{extensions}</span></p>
-  <div class="sources">
-    <div><strong>Ubuntu</strong> <code>{escape(left['php'])}</code>
-      <a href="data/{release_id}-ubuntu.json" download>JSON</a>{provenance(ubuntu, sapi)}
-    </div>
-    <div><strong>Surý</strong> <code>{escape(right['php'])}</code>
-      <a href="data/{release_id}-sury.json" download>JSON</a>{provenance(sury, sapi)}
-    </div>
-  </div>
+  <div class="sources">{''.join(blocks)}</div>
   {table_markup}
-</section>'''
+</section>"""
+
+
+def version_options(versions, start, stop, selected):
+    return "".join(
+        f'<option value="{escape(versions[index])}" data-order="{index}"'
+        f'{" selected" if index == selected else ""}>{escape(versions[index])}</option>'
+        for index in range(start, stop)
+    )
 
 
 def render(input_dir, output_dir):
+    config = matrix()
+    versions = config["sury_versions"]
     # Validate the entire matrix before replacing the published report.
-    samples = [
-        (release, *(load_snapshot(input_dir / f"{release['suite']}-{source}.json", release, source)
-                    for source in SOURCES))
-        for release in matrix()
-    ]
-    cards = "".join(render_comparison(release, ubuntu, sury, sapi)
-                    for release, ubuntu, sury in samples for sapi in SAPIS)
-    releases = "".join(
-        f'<option value="{escape(release["suite"])}">Ubuntu {escape(release["ubuntu"])}</option>'
-        for release, _, _ in samples
-    )
+    samples = {}
+    for spec in sample_specs(config):
+        path = input_dir / f'{spec["filename"]}.json'
+        key = spec["suite"], spec["source"], spec["php"]
+        samples[key] = load_snapshot(path, spec, spec["source"]) | {"filename": spec["filename"]}
+
+    cards = []
+    releases = []
+    for release in config["releases"]:
+        suite, php = release["suite"], release["php"]
+        ubuntu, sury = (samples[suite, source, php] for source in SOURCES)
+        releases.append(f'<option value="{escape(suite)}">Ubuntu {escape(release["ubuntu"])}</option>')
+        for sapi in SAPIS:
+            cards.append(render_comparison(release, ubuntu, sury, sapi))
+            for older, newer in combinations(versions, 2):
+                cards.append(render_comparison(
+                    release, samples[suite, "sury", older], samples[suite, "sury", newer],
+                    sapi, versions=(older, newer),
+                ))
+
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     page = (ROOT / "src" / "report.html").read_text()
     output_dir.mkdir(parents=True, exist_ok=True)
     data_dir = output_dir / "data"
     data_dir.mkdir(exist_ok=True)
-    for release, _, _ in samples:
-        for source in SOURCES:
-            filename = f"{release['suite']}-{source}.json"
-            copyfile(input_dir / filename, data_dir / filename)
-    (output_dir / "index.html").write_text(
-        page.replace("%%UPDATED%%", now).replace("%%RELEASES%%", releases).replace("%%CARDS%%", cards),
-        encoding="utf-8",
-    )
+    for sample in samples.values():
+        filename = f'{sample["filename"]}.json'
+        copyfile(input_dir / filename, data_dir / filename)
+    replacements = {
+        "UPDATED": now,
+        "RELEASES": "".join(releases),
+        "OLDER_OPTIONS": version_options(versions, 0, len(versions) - 1, len(versions) - 2),
+        "NEWER_OPTIONS": version_options(versions, 1, len(versions), len(versions) - 1),
+        "CARDS": "".join(cards),
+    }
+    for marker, content in replacements.items():
+        page = page.replace(f"%%{marker}%%", content)
+    (output_dir / "index.html").write_text(page, encoding="utf-8")
 
 
 def main():
@@ -177,20 +232,25 @@ def main():
     collector = sub.add_parser("collect")
     collector.add_argument("--suite")
     collector.add_argument("--source", choices=SOURCES)
+    collector.add_argument("--php", dest="php_version", help="PHP major.minor to collect")
     collector.add_argument("--output", type=Path, default=ROOT / "measurements")
     renderer = sub.add_parser("render")
     renderer.add_argument("--input", type=Path, default=ROOT / "measurements")
     renderer.add_argument("--output", type=Path, default=ROOT / "site")
     args = parser.parse_args()
     if args.command == "matrix":
-        print(json.dumps([release | {"source": source} for release in matrix() for source in SOURCES]))
+        print(json.dumps(list(sample_specs(matrix()))))
     elif args.command == "collect":
-        releases = [release for release in matrix() if args.suite in (None, release["suite"])]
-        if not releases:
-            parser.error(f"unknown Ubuntu suite: {args.suite}")
-        for release in releases:
-            for source in [args.source] if args.source else SOURCES:
-                collect(release, source, args.output)
+        samples = [
+            sample for sample in sample_specs(matrix())
+            if args.suite in (None, sample["suite"])
+            and args.source in (None, sample["source"])
+            and args.php_version in (None, sample["php"])
+        ]
+        if not samples:
+            parser.error("no configured measurement matches the filters")
+        for sample in samples:
+            collect(sample, args.output)
     else:
         render(args.input, args.output)
 
