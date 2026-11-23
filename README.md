@@ -25,7 +25,7 @@ list them all.
 
 Historical native profiles use the Ubuntu public archives without Ubuntu
 Pro for Ubuntu 18.04 (PHP 7.2) and 20.04 (PHP 7.4). The historical
-deb.sury.org profiles on Ubuntu 22.04 offer PHP 7.2, 7.3, 7.4 and 8.0.
+deb.sury.org profiles on Ubuntu 22.04 offer PHP 5.6, 7.2, 7.3, 7.4 and 8.0.
 
 ## Build the report
 
@@ -38,6 +38,6 @@ one package source, run `python3 src/report.py collect --suite noble --source su
 Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**.
 The **PHP INI report** workflow builds a downloadable HTML preview for
 pull requests and publishes from `master` after a push, on Mondays, or
-when run manually on `master`. Publication requires all 24 package builds
+when run manually on `master`. Publication requires all 25 package builds
 and measurements to pass. The site's project URL is
 https://sunfoxcz.github.io/php-ini-compare/.
