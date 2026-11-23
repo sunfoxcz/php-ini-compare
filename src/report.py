@@ -29,6 +29,7 @@ def sample_specs(config):
             if php != release["php"]:
                 filename += f"-{php}"
             yield release | {"php": php, "source": "sury", "filename": filename}
+    yield from config.get("historical_samples", [])
 
 
 def load_snapshot(path, release, source):
@@ -190,10 +191,24 @@ def render(input_dir, output_dir):
     versions = config["sury_versions"]
     # Validate the entire matrix before replacing the published report.
     samples = {}
+    sample_metadata = {}
     for spec in sample_specs(config):
         path = input_dir / f'{spec["filename"]}.json'
         key = spec["suite"], spec["source"], spec["php"]
-        samples[key] = load_snapshot(path, spec, spec["source"]) | {"filename": spec["filename"]}
+        sample = load_snapshot(path, spec, spec["source"]) | {"filename": spec["filename"]}
+        samples[key] = sample
+        provider = "Native" if spec["source"] == "ubuntu" else "Surý"
+        label = f'Ubuntu {spec["ubuntu"]} · {provider} · PHP {spec["php"]}'
+        sample_metadata[spec["filename"]] = {
+            "label": label,
+            "ubuntu": spec["ubuntu"],
+            "source": spec["source"],
+            "php": spec["php"],
+            "runs": {
+                sapi: {field: sample[sapi][field] for field in ("php", "extensions", "architecture")}
+                for sapi in SAPIS
+            },
+        }
 
     cards = []
     releases = []
@@ -222,10 +237,28 @@ def render(input_dir, output_dir):
         sample["filename"]: {sapi: sample[sapi]["directives"] for sapi in SAPIS}
         for sample in samples.values()
     }
-    directive_json = json.dumps(directive_index, separators=(",", ":"), ensure_ascii=False)
+    def embed_json(value):
+        return json.dumps(value, separators=(",", ":"), ensure_ascii=False).replace("<", "\\u003c")
+
+    def custom_options(selected):
+        groups = []
+        for source, label in (("ubuntu", "Native Ubuntu"), ("sury", "Surý packages")):
+            options = []
+            for name, meta in sorted(sample_metadata.items(), key=lambda item: item[1]["label"]):
+                if meta["source"] == source:
+                    options.append(
+                        f'<option value="{escape(name)}"{" selected" if name == selected else ""}>'
+                        f'{escape(meta["label"])}</option>'
+                    )
+            groups.append(f'<optgroup label="{label}">{"".join(options)}</optgroup>')
+        return "".join(groups)
+
     replacements = {
         "UPDATED": now,
-        "DIRECTIVES": directive_json.replace("<", "\\u003c"),
+        "DIRECTIVES": embed_json(directive_index),
+        "SAMPLE_METADATA": embed_json(sample_metadata),
+        "BASELINE_OPTIONS": custom_options("bionic-ubuntu"),
+        "TARGET_OPTIONS": custom_options("jammy-sury-7.4"),
         "RELEASES": "".join(releases),
         "OLDER_OPTIONS": version_options(versions, 0, len(versions) - 1, len(versions) - 2),
         "NEWER_OPTIONS": version_options(versions, 1, len(versions), len(versions) - 1),
