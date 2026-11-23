@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 
 if (PHP_SAPI !== 'cli') {
     header('Content-Type: application/json');
@@ -19,6 +18,7 @@ $extensions = array_unique(array_merge(get_loaded_extensions(), get_loaded_exten
 sort($extensions, SORT_STRING);
 $config = php_ini_scanned_files();
 
+$jsonOptions = defined('JSON_INVALID_UTF8_SUBSTITUTE') ? JSON_INVALID_UTF8_SUBSTITUTE : 0;
 $snapshot = json_encode([
     'sapi' => PHP_SAPI,
     'php' => PHP_VERSION,
@@ -27,7 +27,7 @@ $snapshot = json_encode([
     'fragments' => $config ? preg_split('/,\s*/', trim($config)) : [],
     'extensions' => $extensions,
     'directives' => $directives,
-], JSON_INVALID_UTF8_SUBSTITUTE);
+], $jsonOptions);
 if ($snapshot === false) {
     throw new RuntimeException(json_last_error_msg());
 }

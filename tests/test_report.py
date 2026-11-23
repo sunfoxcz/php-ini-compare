@@ -68,8 +68,10 @@ class ReportTest(unittest.TestCase):
             self.assertEqual(re.findall(r'<option value="([^"]+)"', native_options),
                              ["bionic-ubuntu", "focal-ubuntu", "jammy-ubuntu", "noble-ubuntu", "resolute-ubuntu"])
             metadata = json.loads(re.search(r'id="sample-metadata">(.*?)</script>', markup).group(1))
+            self.assertIn('<option value="jammy-sury-5.6">Ubuntu 22.04 · deb.sury.org · PHP 5.6</option>', markup)
+            self.assertEqual(metadata["jammy-sury-5.6"]["runs"]["fpm"]["php"], "5.6.1")
             self.assertEqual(metadata["bionic-ubuntu"]["runs"]["fpm"]["php"], "7.2.1")
-            self.assertEqual(len(list((site / "data").glob("*.json"))), 24)
+            self.assertEqual(len(list((site / "data").glob("*.json"))), 25)
             data_text = re.search(r'id="directive-data">(.*?)</script>', markup).group(1)
             data = json.loads(data_text)
             for name in ("noble-sury-8.1", "noble-sury-8.5"):
