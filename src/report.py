@@ -6,7 +6,6 @@ import json
 import re
 import subprocess
 from datetime import datetime, timezone
-from itertools import combinations
 from pathlib import Path
 from shutil import copyfile
 
@@ -24,7 +23,7 @@ def sample_specs(config):
     for release in config["releases"]:
         yield release | {"source": "ubuntu", "filename": f"{release['suite']}-ubuntu"}
         for php in config["sury_versions"]:
-            # Preserve the existing download URLs for the native-versus-Surý pairs.
+            # Preserve the existing download URLs for the native-versus-deb.sury.org pairs.
             filename = f"{release['suite']}-sury"
             if php != release["php"]:
                 filename += f"-{php}"
@@ -70,7 +69,7 @@ def collect(sample, output):
         temporary.unlink(missing_ok=True)
 
 
-def differences(ubuntu, sury, only=("Ubuntu only", "Surý only")):
+def differences(ubuntu, sury, only=("Ubuntu only", "deb.sury.org only")):
     for name in sorted(ubuntu.keys() | sury.keys()):
         if name not in ubuntu:
             yield name, only[1], None, sury[name]
@@ -110,7 +109,7 @@ def provenance(sample, sapi):
     )
 
 
-def render_comparison(release, left_sample, right_sample, sapi, versions=None):
+def render_comparison(release, left_sample, right_sample, sapi):
     left, right = left_sample[sapi], right_sample[sapi]
     if left["architecture"] != right["architecture"]:
         raise ValueError("Cannot compare snapshots from different CPU architectures")
@@ -118,17 +117,9 @@ def render_comparison(release, left_sample, right_sample, sapi, versions=None):
     release_id = escape(release["suite"])
     label = escape(SAPIS[sapi])
     card_id = f"{release_id}-{sapi}"
-    classes = 'data-mode="packages"'
-    headings = ("Ubuntu", "Surý")
-    only = ("Ubuntu only", "Surý only")
+    headings = ("Ubuntu", "deb.sury.org")
+    only = ("Ubuntu only", "deb.sury.org only")
     php_label = f'PHP {escape(release["php"])}'
-    if versions:
-        older, newer = map(escape, versions)
-        card_id += f"-{older}-{newer}"
-        classes = f'data-mode="versions" data-older="{older}" data-newer="{newer}" hidden'
-        headings = (f"PHP {older}", f"PHP {newer}")
-        only = ("Removed", "Added")
-        php_label = f"Surý PHP {older} → {newer}"
     title = f'Ubuntu {escape(release["ubuntu"])} · {php_label} · {label}'
 
     rows = list(differences(left["directives"], right["directives"], only))
@@ -163,14 +154,14 @@ def render_comparison(release, left_sample, right_sample, sapi, versions=None):
     for heading, sample in zip(headings, (left_sample, right_sample)):
         version = escape(sample[sapi]["php"])
         href = f'data/{escape(sample["filename"])}.json'
-        details = "" if versions else provenance(sample, sapi)
+        details = provenance(sample, sapi)
         blocks.append(
             f'<div><strong>{heading}</strong> <code>{version}</code>'
             f'<a href="{href}" download>JSON</a>{details}</div>'
         )
     return f"""
 <section class="comparison" id="{card_id}" data-release="{release_id}" data-sapi="{sapi}"
-  data-left="{escape(left_sample['filename'])}" data-right="{escape(right_sample['filename'])}" {classes}>
+  data-left="{escape(left_sample['filename'])}" data-right="{escape(right_sample['filename'])}" data-mode="packages">
   <h2>{title}</h2>
   <p class="summary">{summary} <span>{extensions}</span></p>
   <div class="sources">{''.join(blocks)}</div>
@@ -178,17 +169,8 @@ def render_comparison(release, left_sample, right_sample, sapi, versions=None):
 </section>"""
 
 
-def version_options(versions, start, stop, selected):
-    return "".join(
-        f'<option value="{escape(versions[index])}" data-order="{index}"'
-        f'{" selected" if index == selected else ""}>{escape(versions[index])}</option>'
-        for index in range(start, stop)
-    )
-
-
 def render(input_dir, output_dir):
     config = matrix()
-    versions = config["sury_versions"]
     # Validate the entire matrix before replacing the published report.
     samples = {}
     sample_metadata = {}
@@ -197,7 +179,7 @@ def render(input_dir, output_dir):
         key = spec["suite"], spec["source"], spec["php"]
         sample = load_snapshot(path, spec, spec["source"]) | {"filename": spec["filename"]}
         samples[key] = sample
-        provider = "Native" if spec["source"] == "ubuntu" else "Surý"
+        provider = "Native" if spec["source"] == "ubuntu" else "deb.sury.org"
         label = f'Ubuntu {spec["ubuntu"]} · {provider} · PHP {spec["php"]}'
         sample_metadata[spec["filename"]] = {
             "label": label,
@@ -218,11 +200,6 @@ def render(input_dir, output_dir):
         releases.append(f'<option value="{escape(suite)}">Ubuntu {escape(release["ubuntu"])}</option>')
         for sapi in SAPIS:
             cards.append(render_comparison(release, ubuntu, sury, sapi))
-            for older, newer in combinations(versions, 2):
-                cards.append(render_comparison(
-                    release, samples[suite, "sury", older], samples[suite, "sury", newer],
-                    sapi, versions=(older, newer),
-                ))
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     page = (ROOT / "src" / "report.html").read_text()
@@ -242,7 +219,7 @@ def render(input_dir, output_dir):
 
     def custom_options(selected):
         groups = []
-        for source, label in (("ubuntu", "Native Ubuntu"), ("sury", "Surý packages")):
+        for source, label in (("ubuntu", "Native Ubuntu"), ("sury", "deb.sury.org")):
             options = []
             for name, meta in sorted(sample_metadata.items(), key=lambda item: item[1]["label"]):
                 if meta["source"] == source:
@@ -253,15 +230,20 @@ def render(input_dir, output_dir):
             groups.append(f'<optgroup label="{label}">{"".join(options)}</optgroup>')
         return "".join(groups)
 
+    latest_suite = max(config["releases"], key=lambda release: release["ubuntu"])["suite"]
+    baseline_php, target_php = sorted(
+        config["sury_versions"], key=lambda version: tuple(map(int, version.split("."))),
+    )[-2:]
+    baseline = samples[latest_suite, "sury", baseline_php]["filename"]
+    target = samples[latest_suite, "sury", target_php]["filename"]
+
     replacements = {
         "UPDATED": now,
         "DIRECTIVES": embed_json(directive_index),
         "SAMPLE_METADATA": embed_json(sample_metadata),
-        "BASELINE_OPTIONS": custom_options("bionic-ubuntu"),
-        "TARGET_OPTIONS": custom_options("jammy-sury-7.4"),
+        "BASELINE_OPTIONS": custom_options(baseline),
+        "TARGET_OPTIONS": custom_options(target),
         "RELEASES": "".join(releases),
-        "OLDER_OPTIONS": version_options(versions, 0, len(versions) - 1, len(versions) - 2),
-        "NEWER_OPTIONS": version_options(versions, 1, len(versions), len(versions) - 1),
         "CARDS": "".join(cards),
     }
     page = re.sub(r"%%([A-Z_]+)%%", lambda match: replacements[match[1]], page)
