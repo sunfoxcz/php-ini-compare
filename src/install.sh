@@ -51,7 +51,7 @@ if [ "$SOURCE" = sury ]; then
                 $2 == version && $3 ~ /https:\/\/packages\.sury\.org\/php/ { found = 1 }
                 END { exit !found }'
         then
-            printf 'No Surý APT candidate for %s (candidate %s)\n' "$package" "$candidate" >&2
+            printf 'No deb.sury.org APT candidate for %s (candidate %s)\n' "$package" "$candidate" >&2
             exit 1
         fi
     done

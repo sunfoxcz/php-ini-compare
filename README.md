@@ -1,36 +1,31 @@
 # PHP INI differences on Ubuntu LTS
 
-Compare the effective PHP settings installed by Ubuntu and by
-[Ondřej Surý](https://packages.sury.org/php/) on the same Ubuntu LTS release
-and PHP major.minor version.
+**PHP versions** is the default view. Compare any two measured profiles,
+with separate CLI and PHP-FPM results. The initial pair uses the two
+latest PHP series in the matrix from [deb.sury.org](https://deb.sury.org/)
+on the newest Ubuntu LTS in the matrix. The report identifies when the
+Ubuntu release or package source also changes.
+
+**Ubuntu vs deb.sury.org** compares the native and deb.sury.org packages
+for the same Ubuntu release and PHP major.minor series.
 
 | Ubuntu LTS | Native PHP | Compared with |
 | --- | --- | --- |
-| 22.04 Jammy | 8.1 | Surý PHP 8.1 on Jammy |
-| 24.04 Noble | 8.3 | Surý PHP 8.3 on Noble |
-| 26.04 Resolute | 8.5 | Surý PHP 8.5 on Resolute |
+| 22.04 Jammy | 8.1 | deb.sury.org PHP 8.1 on Jammy |
+| 24.04 Noble | 8.3 | deb.sury.org PHP 8.3 on Noble |
+| 26.04 Resolute | 8.5 | deb.sury.org PHP 8.5 on Resolute |
 
-The containers install the same versioned CLI, FPM and extension package
-list on amd64. The Surý build uses the signed APT repository directly and
-checks the source of each requested package. Each container runs the
-same probe in CLI and through FastCGI against the default FPM pool.
-The report records exact PHP and package versions, active INI files,
-loaded extensions and effective global and local values. Native and Surý
-patch versions can differ. PHP-FPM pool directives themselves are outside
-the report's INI scope.
+The containers use the same requested extensions on amd64. Each container
+runs the probe in CLI and through FastCGI against the default FPM pool.
+The report records exact PHP versions, active INI files, loaded extensions
+and effective global and local values. PHP patch versions can differ.
+FPM pool directives themselves are outside the report's INI scope.
+Search also finds unchanged directives. Select **Show unchanged** to
+list them all.
 
-The **PHP versions (Surý)** view compares any two from PHP 8.1–8.5.
-Each pair uses the same Ubuntu release and runs separately for CLI and PHP-FPM.
-The report highlights directives and extensions that were added or removed,
-as well as changes to effective values or access. Search also looks up
-unchanged directives. Select **Show unchanged** to list them all.
-
-The **Custom upgrade** view compares any two measured snapshots with
-separate CLI and PHP-FPM results. It identifies differences in Ubuntu release and package
-source alongside PHP changes. The historical native profiles use PHP 7.2
-from Ubuntu 18.04 and PHP 7.4 from Ubuntu 20.04. These use the public Ubuntu
-package archives without Ubuntu Pro. The historical Surý profiles on
-Ubuntu 22.04 offer PHP 7.2, 7.3, 7.4 and 8.0.
+Historical native profiles use the Ubuntu public archives without Ubuntu
+Pro for Ubuntu 18.04 (PHP 7.2) and 20.04 (PHP 7.4). The historical
+deb.sury.org profiles on Ubuntu 22.04 offer PHP 7.2, 7.3, 7.4 and 8.0.
 
 ## Build the report
 

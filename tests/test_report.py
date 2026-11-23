@@ -42,7 +42,7 @@ class ReportTest(unittest.TestCase):
         sury = {"changed": entry(""), "right": entry(""), "same": entry("0")}
         self.assertEqual(
             [(name, status) for name, status, _, _ in report.differences(ubuntu, sury)],
-            [("changed", "Changed"), ("left", "Ubuntu only"), ("right", "Surý only")],
+            [("changed", "Changed"), ("left", "Ubuntu only"), ("right", "deb.sury.org only")],
         )
 
     def test_renderer_validates_all_snapshots_and_escapes_values(self):
@@ -57,27 +57,25 @@ class ReportTest(unittest.TestCase):
             report.render(samples, site)
             markup = (site / "index.html").read_text()
             self.assertEqual(markup.count('data-mode="packages"'), 6)
-            self.assertEqual(markup.count('data-mode="versions"'), 60)
-            self.assertIn('<option value="bionic-ubuntu" selected>Ubuntu 18.04 · Native · PHP 7.2</option>', markup)
-            self.assertIn('<option value="jammy-sury-7.4" selected>Ubuntu 22.04 · Surý · PHP 7.4</option>', markup)
+            self.assertEqual(markup.count('data-mode="versions"'), 1)
+            self.assertIn('<option value="versions">PHP versions</option>'
+                          '<option value="packages">Ubuntu vs deb.sury.org</option>', markup)
+            self.assertIn('<option value="resolute-sury-8.4" selected>'
+                          'Ubuntu 26.04 · deb.sury.org · PHP 8.4</option>', markup)
+            self.assertIn('<option value="resolute-sury" selected>'
+                          'Ubuntu 26.04 · deb.sury.org · PHP 8.5</option>', markup)
             native_options = re.search(r'<optgroup label="Native Ubuntu">(.*?)</optgroup>', markup).group(1)
             self.assertEqual(re.findall(r'<option value="([^"]+)"', native_options),
                              ["bionic-ubuntu", "focal-ubuntu", "jammy-ubuntu", "noble-ubuntu", "resolute-ubuntu"])
             metadata = json.loads(re.search(r'id="sample-metadata">(.*?)</script>', markup).group(1))
             self.assertEqual(metadata["bionic-ubuntu"]["runs"]["fpm"]["php"], "7.2.1")
             self.assertEqual(len(list((site / "data").glob("*.json"))), 24)
-            version_card = markup.split('id="noble-fpm-8.1-8.5"', 1)[1].split("</section>", 1)[0]
-            self.assertIn("<code>test.php8.1</code><small>Removed</small>", version_card)
-            self.assertIn("<code>test.php8.5</code><small>Added</small>", version_card)
-            self.assertNotIn("memory_limit", version_card)
-            self.assertIn('data-left="noble-sury-8.1"', version_card)
-            self.assertIn('data-right="noble-sury-8.5"', version_card)
             data_text = re.search(r'id="directive-data">(.*?)</script>', markup).group(1)
             data = json.loads(data_text)
             for name in ("noble-sury-8.1", "noble-sury-8.5"):
                 self.assertEqual(data[name]["fpm"]["memory_limit"], entry("128M"))
                 self.assertEqual(data[name]["fpm"]["test.escaped"], entry("</script>%%CARDS%%"))
-            self.assertIn('href="data/noble-sury-8.1.json"', markup)
+            self.assertIn('href="data/noble-sury.json"', markup)
             self.assertTrue((site / "data" / "noble-sury.json").is_file())
             self.assertIn("&lt;value&gt;", markup)
             self.assertNotIn("<value>", markup)
